@@ -426,7 +426,37 @@ func TestScrapeRequestStatusQueriesSupportProgressAndFilters(t *testing.T) {
 	}
 }
 
-func TestJobQueriesIncludeCoverageAndTimelinessMetrics(t *testing.T) {
+func TestListJobsQueryMatchesJobsPageSummaryQuery(t *testing.T) {
+	expectedQuery := `
+select
+    j.id,
+    j.trigger_type,
+    j.scrape_plan_type,
+    j.status,
+    j.config_file,
+    j.request_id,
+    j.created_at,
+    j.started_at,
+    j.finished_at,
+    j.last_error,
+    count(s.id) as scrape_req,
+    count(a.scrape_request_id) as a_scrape_req,
+    count(r.scrape_request_id) as r_scrape_req,
+    count(a.scrape_request_id) filter (where a.status='done') as a_scrape_req_done,
+    count(r.scrape_request_id) filter (where r.status='done') as r_scrape_req_done
+from job_runs j join scrape_requests s on s.job_run_id=j.id
+left join aurora_scrape_states a on s.id=a.scrape_request_id
+left join rategain_scrape_states r on s.id=r.scrape_request_id
+group by j.id, j.created_at
+order by j.created_at desc
+limit 20`
+
+	if strings.TrimSpace(listJobsSQL) != strings.TrimSpace(expectedQuery) {
+		t.Fatalf("list jobs query does not match expected jobs page summary query")
+	}
+}
+
+func TestGetJobQueryIncludesCoverageAndTimelinessMetrics(t *testing.T) {
 	expectedSnippets := []string{
 		"successful_scrape_count",
 		"coverage_percent",
@@ -440,11 +470,9 @@ func TestJobQueriesIncludeCoverageAndTimelinessMetrics(t *testing.T) {
 		"status = 'done'",
 	}
 
-	for _, query := range []string{listJobsSQL, getJobSQL} {
-		for _, expected := range expectedSnippets {
-			if !strings.Contains(query, expected) {
-				t.Fatalf("expected job query to contain %q", expected)
-			}
+	for _, expected := range expectedSnippets {
+		if !strings.Contains(getJobSQL, expected) {
+			t.Fatalf("expected job query to contain %q", expected)
 		}
 	}
 }
@@ -512,6 +540,18 @@ func TestRefreshJobStatusSQLAggregatesProviderStates(t *testing.T) {
 		if !strings.Contains(refreshJobStatusSQL, expected) {
 			t.Fatalf("expected refresh SQL to contain %q", expected)
 		}
+	}
+}
+
+func TestMarkJobRunningSQLOnlyTransitionsPlannableJobs(t *testing.T) {
+	expected := "status IN ('planning', 'planned')"
+	if !strings.Contains(markJobRunningSQL, expected) {
+		t.Fatalf("expected mark running SQL to contain %q", expected)
+	}
+
+	notExpected := "status IN ('planning', 'planned', 'running')"
+	if strings.Contains(markJobRunningSQL, notExpected) {
+		t.Fatalf("expected mark running SQL not to rewrite already-running jobs")
 	}
 }
 
